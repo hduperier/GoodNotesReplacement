@@ -5,33 +5,87 @@ on:
     branches: [main]
   pull_request:
 
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-test:
     name: Build & Test (iPad simulator)
+    # NOTE: iPadOS 26.5 ships with a specific Xcode. GitHub-hosted runner images
+    # lag the latest SDKs, so this may need a self-hosted runner (or a newer
+    # `macos-*` image) once 26.5 is available. `macos-15` is a realistic current
+    # default; bump it together with the Xcode version below when 26.5 lands.
     runs-on: macos-15
+    env:
+      PROJECT: GoodNotesReplacement.xcodeproj
+      SCHEME: GoodNotesReplacement
+      # Target simulator. The runner must have a matching iPadOS runtime
+      # installed; we resolve the concrete device dynamically below and fall
+      # back to this name if discovery fails.
+      SIM_NAME: "iPad Pro 13-inch (M4)"
+      SIM_OS: "26.5"
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      # Pin Xcode to the version that bundles the iPadOS 26.5 SDK. Adjust the
+      # version string to whatever the chosen runner image provides.
+      - name: Select Xcode
+        run: |
+          # Prefer an Xcode that ships iPadOS ${SIM_OS}; otherwise use the latest.
+          sudo xcode-select -p
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i ios || true
+
+      - name: Install tooling
+        run: |
+          brew install xcodegen xcbeautify
 
       - name: Generate Xcode project
         run: xcodegen generate
 
-      # NOTE: requires a runner image with the iPadOS 26.5 SDK. Adjust the
-      # Xcode/runner version and the simulator destination as availability allows.
+      # Pick a concrete, *available* iPad simulator for the requested runtime so
+      # the destination is unambiguous. Falls back to the env default.
+      - name: Resolve simulator destination
+        id: sim
+        run: |
+          set -o pipefail
+          DEST="platform=iOS Simulator,name=${SIM_NAME},OS=${SIM_OS}"
+          # If the exact OS isn't installed, drop the OS pin and let xcodebuild
+          # choose the newest available runtime for that device.
+          if ! xcrun simctl list runtimes | grep -q "iOS ${SIM_OS}"; then
+            echo "iOS ${SIM_OS} runtime not found; using newest available for ${SIM_NAME}."
+            DEST="platform=iOS Simulator,name=${SIM_NAME}"
+          fi
+          echo "destination=${DEST}" >> "$GITHUB_OUTPUT"
+          echo "Using destination: ${DEST}"
+
+      - name: Resolve dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project "${PROJECT}" \
+            -scheme "${SCHEME}" || true
+
       - name: Build & test
         run: |
+          set -o pipefail
           xcodebuild test \
-            -project GoodNotesReplacement.xcodeproj \
-            -scheme GoodNotesReplacement \
-            -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M4)' \
+            -project "${PROJECT}" \
+            -scheme "${SCHEME}" \
+            -destination "${{ steps.sim.outputs.destination }}" \
             -resultBundlePath TestResults.xcresult \
-            CODE_SIGNING_ALLOWED=NO | xcbeautify || exit 1
+            -enableCodeCoverage YES \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            | xcbeautify
 
-      - name: Upload results
+      - name: Upload xcresult
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: TestResults.xcresult
           path: TestResults.xcresult
+          retention-days: 14
+          if-no-files-found: warn
