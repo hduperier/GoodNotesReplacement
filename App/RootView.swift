@@ -1,18 +1,22 @@
 import SwiftUI
+import SwiftData
 
-/// Placeholder root view. The FRONTEND agent replaces this body with the real
-/// library/shelf experience (`LibraryView`) and notebook editor navigation.
-/// Keep the type name `RootView` so `GoodNotesReplacementApp` continues to compile.
+/// Root of the app. Presents the library inside an iPad-class
+/// `NavigationSplitView`: a sidebar listing the root + folders, and a detail
+/// column hosting the shelf (which itself pushes into folders / the editor).
+///
+/// The `DocumentStore` and `ThumbnailService` are read from the environment.
+/// Until the orchestrator injects the real `SwiftDataDocumentStore`, the
+/// `Environment+Stores` defaults (`InMemoryDocumentStore` / `PKThumbnailService`)
+/// keep the app and previews running.
 struct RootView: View {
     var body: some View {
-        ContentUnavailableView(
-            "GoodNotes Replacement",
-            systemImage: "books.vertical",
-            description: Text("Foundation scaffolded. Frontend UI pending.")
-        )
+        LibraryRootView()
     }
 }
 
 #Preview {
     RootView()
+        .documentStore(InMemoryDocumentStore(seed: true))
+        .modelContainer(try! AppSchema.previewContainer())
 }
