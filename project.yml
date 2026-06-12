@@ -1,0 +1,70 @@
+name: GoodNotesReplacement
+options:
+  bundleIdPrefix: com.harvey.goodnotesreplacement
+  deploymentTarget:
+    iOS: "26.5"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    DEVELOPMENT_TEAM: "" # set your Apple Developer Team ID
+    TARGETED_DEVICE_FAMILY: "2" # 2 = iPad only
+    SWIFT_STRICT_CONCURRENCY: complete
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+targets:
+  GoodNotesReplacement:
+    type: application
+    platform: iOS
+    deploymentTarget: "26.5"
+    sources:
+      - path: App
+      - path: Sources
+    settings:
+      base:
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UIRequiresFullScreen: NO
+        PRODUCT_BUNDLE_IDENTIFIER: com.harvey.goodnotesreplacement
+        GENERATE_INFOPLIST_FILE: YES
+        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "0.1.0"
+
+  GoodNotesReplacementTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "26.5"
+    sources:
+      - path: Tests/CoreTests
+      - path: Tests/PersistenceTests
+    dependencies:
+      - target: GoodNotesReplacement
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+
+  GoodNotesReplacementUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "26.5"
+    sources:
+      - path: Tests/UITests
+    dependencies:
+      - target: GoodNotesReplacement
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  GoodNotesReplacement:
+    build:
+      targets:
+        GoodNotesReplacement: all
+    test:
+      targets:
+        - GoodNotesReplacementTests
+        - GoodNotesReplacementUITests

@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    name: Build & Test (iPad simulator)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      # NOTE: requires a runner image with the iPadOS 26.5 SDK. Adjust the
+      # Xcode/runner version and the simulator destination as availability allows.
+      - name: Build & test
+        run: |
+          xcodebuild test \
+            -project GoodNotesReplacement.xcodeproj \
+            -scheme GoodNotesReplacement \
+            -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M4)' \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO | xcbeautify || exit 1
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults.xcresult

@@ -1,0 +1,29 @@
+# Xcode / Swift
+*.xcodeproj/
+!project.yml
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+build/
+.build/
+*.xcuserstate
+*.moved-aside
+
+# Swift Package Manager
+.swiftpm/
+Package.resolved
+
+# macOS
+.DS_Store
+
+# Generated
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Fastlane / CI artifacts
+fastlane/report.xml
+fastlane/test_output/
+
+# Local config
+*.local.xcconfig
