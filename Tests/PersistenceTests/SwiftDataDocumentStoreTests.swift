@@ -33,18 +33,26 @@ final class SwiftDataDocumentStoreContractTests: DocumentStoreContractTests {
     private var container: ModelContainer!
     private var thumbnails: StubThumbnailService!
 
+    // `setUpWithError`/`tearDownWithError` override XCTestCase's nonisolated
+    // methods, so they run nonisolated even though this class is @MainActor.
+    // XCTest invokes them on the main thread, so `MainActor.assumeIsolated`
+    // lets us touch the main-actor-isolated fixtures safely under Swift 6.
     override func setUpWithError() throws {
         try super.setUpWithError()
-        container = try ModelContainer(
-            for: AppSchema.schema,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
-        thumbnails = StubThumbnailService()
+        try MainActor.assumeIsolated {
+            container = try ModelContainer(
+                for: AppSchema.schema,
+                configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            )
+            thumbnails = StubThumbnailService()
+        }
     }
 
     override func tearDownWithError() throws {
-        container = nil
-        thumbnails = nil
+        MainActor.assumeIsolated {
+            container = nil
+            thumbnails = nil
+        }
         try super.tearDownWithError()
     }
 

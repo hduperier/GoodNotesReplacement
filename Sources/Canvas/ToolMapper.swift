@@ -45,7 +45,11 @@ public enum ToolMapper {
     /// Resolved stroke color, applying highlighter transparency where relevant.
     @MainActor
     public static func color(for tool: InkTool) -> UIColor {
-        let base = UIColor(hex: tool.colorHex) ?? .label
+        // Fall back to a fixed near-black rather than `.label`: ink is drawn on
+        // the (light) paper, so a dark-mode-adaptive `.label` would resolve to
+        // white and render invisible. Paper color is document content and does
+        // not follow the system appearance.
+        let base = UIColor(hex: tool.colorHex) ?? UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1)
         if tool.kind == .highlighter {
             return base.withAlphaComponent(highlighterAlpha)
         }

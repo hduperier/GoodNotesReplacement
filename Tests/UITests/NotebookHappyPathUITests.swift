@@ -9,18 +9,27 @@ import XCTest
 /// the "Requests to Frontend" section of `docs/TEST_PLAN.md`). Until those land
 /// the tests will fail at the first missing element — that is intentional: they
 /// document the contract the UI must satisfy.
+// @MainActor: XCUIApplication/XCUIElement are main-actor-isolated under the
+// iOS 18 SDK + Swift 6, so the whole test class must run on the main actor.
+@MainActor
 final class NotebookHappyPathUITests: XCTestCase {
 
     private var app: XCUIApplication!
 
+    // setUp/tearDown override nonisolated XCTestCase methods, so reach the
+    // main-actor app via assumeIsolated (XCTest runs them on the main thread).
     override func setUpWithError() throws {
-        continueAfterFailure = false
-        app = XCUIApplication()
-        app.launchArguments += [LaunchArgument.uiTesting, LaunchArgument.resetStore]
+        try MainActor.assumeIsolated {
+            continueAfterFailure = false
+            app = XCUIApplication()
+            app.launchArguments += [LaunchArgument.uiTesting, LaunchArgument.resetStore]
+        }
     }
 
     override func tearDownWithError() throws {
-        app = nil
+        MainActor.assumeIsolated {
+            app = nil
+        }
     }
 
     // MARK: - Helpers
