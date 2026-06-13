@@ -105,27 +105,41 @@ final class SwiftDataDocumentStorePersistenceTests: XCTestCase {
         XCTAssertEqual(pages.first?.index, 0)
     }
 
-    func test_updateDrawing_eventuallyRefreshesThumbnail() throws {
-        let (store, _, stub) = try makeStore()
+    /// Awaits the store's fire-and-forget thumbnail `Task` by suspending this
+    /// (main-actor) test, which lets the cooperative executor run it. Returns
+    /// once `stub.renderCount` reaches `count`, or fails on timeout.
+    private func awaitRenderCount(
+        _ stub: StubThumbnailService, atLeast count: Int, timeout: TimeInterval = 2.0
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while stub.renderCount < count && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+        }
+    }
+
+    func test_updateDrawing_eventuallyRefreshesThumbnail() async throws {
+        // Hold the container for the whole test: the thumbnail refresh runs on a
+        // later Task that saves through the store's context, which is only valid
+        // while its ModelContainer is alive. (In the app the container lives for
+        // the process lifetime; dropping it here would crash that deferred save.)
+        let (store, container, stub) = try makeStore()
         let notebook = try store.createNotebook(title: "N", in: nil, template: .lined)
         let page = notebook.orderedPages[0]
 
         try store.updateDrawing(for: page, drawingData: Data([1, 2, 3]))
 
         // The store dispatches thumbnail rendering on a low-priority main-actor
-        // Task; pump the main run loop until it lands (or time out).
-        let deadline = Date().addingTimeInterval(2.0)
-        while stub.renderCount == 0 && Date() < deadline {
-            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
-        }
+        // Task; suspend until it lands (or time out).
+        await awaitRenderCount(stub, atLeast: 1)
 
         XCTAssertGreaterThanOrEqual(stub.renderCount, 1,
                                     "updateDrawing should trigger a thumbnail refresh.")
         XCTAssertEqual(page.thumbnailData, StubThumbnailService.fixedThumbnail)
+        withExtendedLifetime(container) {}
     }
 
-    func test_updateDrawing_toleratesThumbnailFailure() throws {
-        let (store, _, stub) = try makeStore()
+    func test_updateDrawing_toleratesThumbnailFailure() async throws {
+        let (store, container, stub) = try makeStore()
         stub.errorToThrow = DocumentStoreError.persistenceFailure("boom")
         let notebook = try store.createNotebook(title: "N", in: nil, template: .lined)
         let page = notebook.orderedPages[0]
@@ -134,10 +148,12 @@ final class SwiftDataDocumentStorePersistenceTests: XCTestCase {
         // Must not throw despite the thumbnail service erroring.
         XCTAssertNoThrow(try store.updateDrawing(for: page, drawingData: ink))
 
-        // Drain the dispatched task; ink stays intact, thumbnail stays nil.
-        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        // Let the dispatched task run (it renders, then throws and is swallowed);
+        // ink stays intact and the thumbnail cache is left untouched (nil).
+        await awaitRenderCount(stub, atLeast: 1)
         XCTAssertEqual(page.drawingData, ink)
         XCTAssertNil(page.thumbnailData)
+        withExtendedLifetime(container) {}
     }
 
     func test_dataSurvivesNewContextOnSameContainer() throws {
