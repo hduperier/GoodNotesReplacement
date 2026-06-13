@@ -30,7 +30,7 @@ public final class SwiftDataDocumentStore: DocumentStore {
 
     @discardableResult
     public func createFolder(name: String, parent: Folder?) throws -> Folder {
-        let siblingCount = parent?.subfolders.count ?? (try rootFolders().count)
+        let siblingCount = try parent?.subfolders.count ?? rootFolders().count
         let folder = Folder(name: name, parent: parent, sortIndex: siblingCount)
         context.insert(folder)
         if let parent {
@@ -69,7 +69,7 @@ public final class SwiftDataDocumentStore: DocumentStore {
 
     @discardableResult
     public func createNotebook(title: String, in folder: Folder?, template: PaperTemplate) throws -> Notebook {
-        let count = folder?.notebooks.count ?? (try rootNotebooks().count)
+        let count = try folder?.notebooks.count ?? rootNotebooks().count
         let notebook = Notebook(title: title, folder: folder, defaultTemplate: template, sortIndex: count)
         context.insert(notebook)
         // Seed exactly one blank page at index 0 with the chosen template.

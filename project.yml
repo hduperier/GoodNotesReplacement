@@ -2,7 +2,7 @@ name: GoodNotesReplacement
 options:
   bundleIdPrefix: com.harvey.goodnotesreplacement
   deploymentTarget:
-    iOS: "26.5"
+    iOS: "18.0"
   createIntermediateGroups: true
   groupSortPosition: top
 
@@ -18,10 +18,12 @@ targets:
   GoodNotesReplacement:
     type: application
     platform: iOS
-    deploymentTarget: "26.5"
+    deploymentTarget: "18.0"
     sources:
       - path: App
+        excludes: ["**/*.md", "**/.gitkeep"]
       - path: Sources
+        excludes: ["**/*.md", "**/.gitkeep"]
     settings:
       base:
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
@@ -37,7 +39,7 @@ targets:
   GoodNotesReplacementTests:
     type: bundle.unit-test
     platform: iOS
-    deploymentTarget: "26.5"
+    deploymentTarget: "18.0"
     sources:
       - path: Tests/CoreTests
       - path: Tests/PersistenceTests
@@ -50,7 +52,7 @@ targets:
   GoodNotesReplacementUITests:
     type: bundle.ui-testing
     platform: iOS
-    deploymentTarget: "26.5"
+    deploymentTarget: "18.0"
     sources:
       - path: Tests/UITests
     dependencies:
