@@ -24,7 +24,7 @@ final class NotebookHappyPathUITests: XCTestCase {
     override func setUp() async throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments += [LaunchArgument.uiTesting, LaunchArgument.resetStore]
+        // Launch arguments are set per-launch by `launch(reset:)`.
     }
 
     override func tearDown() async throws {
@@ -117,9 +117,6 @@ final class NotebookHappyPathUITests: XCTestCase {
         XCTAssertTrue(confirm.exists,
                       "New-notebook sheet did not present its \(A11y.createNotebookConfirm).")
         robustTap(confirm)
-
-        // Creating the notebook navigates straight into the editor.
-        XCTAssertTrue(waitFor(canvas), "Editor canvas \(A11y.canvas) never appeared.")
 
         // Creating the notebook navigates straight into the editor.
         XCTAssertTrue(waitFor(canvas), "Editor canvas \(A11y.canvas) never appeared.")
