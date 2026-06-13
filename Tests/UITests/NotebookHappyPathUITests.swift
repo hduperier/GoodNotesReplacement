@@ -9,17 +9,25 @@ import XCTest
 /// the "Requests to Frontend" section of `docs/TEST_PLAN.md`). Until those land
 /// the tests will fail at the first missing element — that is intentional: they
 /// document the contract the UI must satisfy.
+// @MainActor: XCUIApplication/XCUIElement are main-actor-isolated under the
+// iOS 18 SDK + Swift 6, so the whole test class must run on the main actor.
+@MainActor
 final class NotebookHappyPathUITests: XCTestCase {
 
     private var app: XCUIApplication!
 
-    override func setUpWithError() throws {
+    // Use the *async* setUp/tearDown overrides: unlike the synchronous ones, an
+    // async override may add @MainActor isolation, so the body runs on the main
+    // actor and can touch XCUIApplication directly — no `assumeIsolated`, which
+    // would otherwise "send" the non-Sendable `self` across an isolation
+    // boundary and trip Swift 6's data-race checker.
+    override func setUp() async throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments += [LaunchArgument.uiTesting, LaunchArgument.resetStore]
+        // Launch arguments are set per-launch by `launch(reset:)`.
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
         app = nil
     }
 
@@ -36,28 +44,81 @@ final class NotebookHappyPathUITests: XCTestCase {
         element.waitForExistence(timeout: timeout)
     }
 
+    /// Taps `element`, falling back to a center-coordinate tap. SwiftUI
+    /// toolbar/navbar buttons often report as non-hittable, so `.tap()` runs a
+    /// scroll-to-visible preflight that fails ("Failed to scroll to visible")
+    /// even though the button is on screen. A coordinate tap bypasses that.
+    private func robustTap(_ element: XCUIElement) {
+        // Tap the *window* at the element's frame center. Plain `.tap()` runs a
+        // scroll-to-visible AX preflight that fails ("kAXErrorCannotComplete")
+        // for SwiftUI buttons in non-scrollable scroll views / toolbars on this
+        // SDK, and an element-relative coordinate tap doesn't land when the
+        // element reports non-hittable. An absolute window-coordinate tap does.
+        let f = element.frame
+        app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: f.midX, dy: f.midY))
+            .tap()
+    }
+
+    /// Taps `element` until `target` appears, retrying because the first
+    /// synthesized tap after an app launch/relaunch is sometimes swallowed while
+    /// the window becomes key/active.
+    private func tap(_ element: XCUIElement, untilPresent target: XCUIElement, attempts: Int = 4) {
+        for _ in 0..<attempts {
+            if target.exists { return }
+            robustTap(element)
+            if target.waitForExistence(timeout: 3) { return }
+        }
+    }
+
+    /// On iPad portrait the split-view sidebar can present as an overlay popover
+    /// (notably after a relaunch), covering the detail with a dismiss region that
+    /// swallows taps meant for shelf cells. Dismiss it if present.
+    private func dismissSidebarOverlayIfPresent() {
+        let dismissRegion = app.descendants(matching: .any)
+            .matching(identifier: "PopoverDismissRegion").firstMatch
+        if dismissRegion.exists {
+            robustTap(dismissRegion)
+            _ = dismissRegion.waitForExistence(timeout: 1) // let the dismiss settle
+        }
+    }
+
+    /// Whether the page indicator's label contains `substring` within `timeout`.
+    private func indicatorShows(_ substring: String, timeout: TimeInterval = 5) -> Bool {
+        let indicator = app.staticTexts[A11y.pageIndicator]
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if indicator.exists && indicator.label.contains(substring) { return true }
+            _ = indicator.waitForExistence(timeout: 0.3)
+        } while Date() < deadline
+        return indicator.exists && indicator.label.contains(substring)
+    }
+
+    /// The live ink canvas. `PKCanvasView` is a `UIScrollView`, so XCUITest
+    /// surfaces it as a scrollView (not an `otherElement`); match the identifier
+    /// across all element types so the lookup is robust to that classification.
+    private var canvas: XCUIElement {
+        app.descendants(matching: .any).matching(identifier: A11y.canvas).firstMatch
+    }
+
     /// Creates a notebook from the library and returns once the editor is shown.
     private func createNotebookAndOpenEditor() {
-        let newButton = app.buttons[A11y.newNotebookButton]
-        XCTAssertTrue(waitFor(newButton), "Missing \(A11y.newNotebookButton)")
-        newButton.tap()
+        // Tests always start from an empty library, so drive creation from the
+        // empty-state CTA — a normal in-content button that XCUITest can tap.
+        // (The toolbar "+" button reports as non-hittable, a known SwiftUI
+        // toolbar quirk, so a tap there doesn't open the sheet.)
+        let createCTA = app.scrollViews.buttons["New Notebook"]
+        XCTAssertTrue(waitFor(createCTA), "Missing empty-state New Notebook button")
 
-        // The new-notebook flow may present a sheet with a confirm button; if so,
-        // confirm. Otherwise creation is immediate.
+        // First interaction after launch — retry until the sheet's Create button
+        // appears (the first synthesized tap can be swallowed).
         let confirm = app.buttons[A11y.createNotebookConfirm]
-        if confirm.waitForExistence(timeout: 2) {
-            confirm.tap()
-        }
+        tap(createCTA, untilPresent: confirm)
+        XCTAssertTrue(confirm.exists,
+                      "New-notebook sheet did not present its \(A11y.createNotebookConfirm).")
+        robustTap(confirm)
 
-        // Opening the freshly created notebook lands us in the editor.
-        let canvas = app.otherElements[A11y.canvas]
-        if !canvas.waitForExistence(timeout: 3) {
-            // Some UIs require an explicit tap on the new shelf cell to open it.
-            let firstCell = app.descendants(matching: .any)
-                .matching(NSPredicate(format: "identifier BEGINSWITH %@", A11y.notebookCellPrefix))
-                .firstMatch
-            if firstCell.waitForExistence(timeout: 3) { firstCell.tap() }
-        }
+        // Creating the notebook navigates straight into the editor.
         XCTAssertTrue(waitFor(canvas), "Editor canvas \(A11y.canvas) never appeared.")
     }
 
@@ -83,13 +144,12 @@ final class NotebookHappyPathUITests: XCTestCase {
 
         createNotebookAndOpenEditor()
 
-        let canvas = app.otherElements[A11y.canvas]
         drawStroke(on: canvas)
 
         // Add a second page and confirm the page indicator reflects two pages.
         let addPage = app.buttons[A11y.addPageButton]
         XCTAssertTrue(waitFor(addPage), "Missing \(A11y.addPageButton)")
-        addPage.tap()
+        robustTap(addPage)
 
         let indicator = app.staticTexts[A11y.pageIndicator]
         if waitFor(indicator, 3) {
@@ -99,12 +159,12 @@ final class NotebookHappyPathUITests: XCTestCase {
 
         // Navigate back to the previous page to verify navigation works.
         let prev = app.buttons[A11y.previousPageButton]
-        if prev.exists { prev.tap() }
+        if prev.exists { robustTap(prev) }
 
         // Return to the library via the system navigation back button.
         let back = app.navigationBars.buttons.element(boundBy: 0)
         XCTAssertTrue(waitFor(back), "Missing navigation back button")
-        back.tap()
+        robustTap(back)
 
         // The notebook cell must exist before we relaunch.
         let cell = app.descendants(matching: .any)
@@ -123,9 +183,11 @@ final class NotebookHappyPathUITests: XCTestCase {
                       "Notebook did not persist across relaunch.")
 
         // Reopen and confirm the editor + canvas come back (ink restored).
-        persistedCell.tap()
-        let reopenedCanvas = app.otherElements[A11y.canvas]
-        XCTAssertTrue(waitFor(reopenedCanvas),
+        // After relaunch the sidebar may overlay the detail; dismiss it, then
+        // retry the cell tap (the first synthesized tap can also be swallowed).
+        dismissSidebarOverlayIfPresent()
+        tap(persistedCell, untilPresent: canvas)
+        XCTAssertTrue(canvas.exists,
                       "Editor canvas did not reopen for the persisted notebook.")
     }
 
@@ -135,21 +197,23 @@ final class NotebookHappyPathUITests: XCTestCase {
 
         let addPage = app.buttons[A11y.addPageButton]
         XCTAssertTrue(waitFor(addPage))
-        addPage.tap()
-        addPage.tap()  // now 3 pages
 
+        // Add two pages, synchronizing on the page indicator's total ("/ N") so a
+        // tap swallowed during the post-add animation doesn't desync the count.
+        for total in ["2", "3"] {
+            for _ in 0..<4 where !indicatorShows("/ \(total)", timeout: 1) {
+                robustTap(addPage)
+            }
+            XCTAssertTrue(indicatorShows("/ \(total)"),
+                          "Expected \(total) pages, got \(app.staticTexts[A11y.pageIndicator].label).")
+        }
+
+        // Page navigation controls must be present and usable.
         let next = app.buttons[A11y.nextPageButton]
         let prev = app.buttons[A11y.previousPageButton]
         XCTAssertTrue(waitFor(next) || waitFor(prev),
                       "Editor must expose page navigation controls.")
-
-        if next.exists { next.tap() }
-        if prev.exists { prev.tap() }
-
-        let indicator = app.staticTexts[A11y.pageIndicator]
-        if indicator.exists {
-            XCTAssertTrue(indicator.label.contains("3"),
-                          "Expected 3 pages after two additions, got \(indicator.label).")
-        }
+        if next.exists { robustTap(next) }
+        if prev.exists { robustTap(prev) }
     }
 }

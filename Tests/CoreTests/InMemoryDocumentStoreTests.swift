@@ -11,14 +11,15 @@ final class InMemoryDocumentStoreContractTests: DocumentStoreContractTests {
 
     private var store: InMemoryDocumentStore!
 
-    override func setUpWithError() throws {
-        try super.setUpWithError()
+    // Async setUp/tearDown so the override picks up the class's @MainActor
+    // isolation; the synchronous (nonisolated) variants can't construct the
+    // main-actor-isolated store or mutate the fixture under Swift 6.
+    override func setUp() async throws {
         store = InMemoryDocumentStore(seed: false)
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
         store = nil
-        try super.tearDownWithError()
     }
 
     override func makeStore() throws -> DocumentStore? { store }

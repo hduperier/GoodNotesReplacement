@@ -23,9 +23,17 @@ In scope for the MVP test effort:
 - **UI happy path** (XCUITest): launch → create notebook → draw a stroke → add /
   navigate pages → relaunch → assert persistence.
 
-Out of scope for MVP: PencilKit rendering fidelity, `PaperRenderer` pixel output,
-`ToolMapper` (Canvas-owned; can be added once Frontend lands), CloudKit/sync
-(explicitly local-only), performance benchmarks.
+Now that Frontend has landed, the Canvas layer is in scope for **theming**
+contracts (the previously-deferred `ToolMapper` / `PaperRenderer` work):
+
+- **Ink color** (`Canvas/ToolMapper`): resolution is non-adaptive (identical in
+  light/dark traits), the fallback is a visible dark ink — never the adaptive
+  `.label` — and the highlighter applies its alpha.
+- **Paper render** (`Canvas/PaperRenderer`): the page renders light and is
+  pixel-identical regardless of system appearance; color fallbacks stay light.
+
+Still out of scope for MVP: PencilKit rendering fidelity / stroke geometry,
+CloudKit/sync (explicitly local-only), performance benchmarks.
 
 ## 2. Test matrix
 
@@ -34,6 +42,8 @@ Out of scope for MVP: PencilKit rendering fidelity, `PaperRenderer` pixel output
 | `PaperSize.pointSize`, `canvasSize` portrait/landscape across all sizes | Unit | `CoreTests/PaperTemplateTests` | value type |
 | `PaperTemplate` builtIns + Codable round-trips; enum raw-value stability | Unit | `CoreTests/PaperTemplateTests` | value type |
 | `InkTool` defaults/presets + Codable/Hashable; `ColorSwatches.starter` | Unit | `CoreTests/InkToolTests` | value type |
+| Ink color non-adaptive across light/dark; visible dark fallback; highlighter alpha | Unit | `CoreTests/ToolMapperThemeTests` | `ToolMapper` + `UITraitCollection` |
+| Paper renders light under a dark trait; pixel-identical across appearances | Unit | `CoreTests/PaperRendererThemeTests` | `PaperRenderer` pixel output |
 | `AppSchema.schema` entities; `previewContainer()` usable + isolated; cascade | Unit | `CoreTests/AppSchemaTests` | `ModelContainer` |
 | `InMemoryDocumentStore` invariants (roots, seed, schema, save no-op) | Unit | `CoreTests/InMemoryDocumentStoreTests` | in-memory store |
 | Folder CRUD + cascade; notebook CRUD + cascade; create seeds 1 page | Integration | `PersistenceTests/DocumentStoreContractTests` | **both** stores |
