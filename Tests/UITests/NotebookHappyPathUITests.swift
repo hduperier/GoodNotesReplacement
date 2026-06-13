@@ -16,20 +16,19 @@ final class NotebookHappyPathUITests: XCTestCase {
 
     private var app: XCUIApplication!
 
-    // setUp/tearDown override nonisolated XCTestCase methods, so reach the
-    // main-actor app via assumeIsolated (XCTest runs them on the main thread).
-    override func setUpWithError() throws {
-        try MainActor.assumeIsolated {
-            continueAfterFailure = false
-            app = XCUIApplication()
-            app.launchArguments += [LaunchArgument.uiTesting, LaunchArgument.resetStore]
-        }
+    // Use the *async* setUp/tearDown overrides: unlike the synchronous ones, an
+    // async override may add @MainActor isolation, so the body runs on the main
+    // actor and can touch XCUIApplication directly — no `assumeIsolated`, which
+    // would otherwise "send" the non-Sendable `self` across an isolation
+    // boundary and trip Swift 6's data-race checker.
+    override func setUp() async throws {
+        continueAfterFailure = false
+        app = XCUIApplication()
+        app.launchArguments += [LaunchArgument.uiTesting, LaunchArgument.resetStore]
     }
 
-    override func tearDownWithError() throws {
-        MainActor.assumeIsolated {
-            app = nil
-        }
+    override func tearDown() async throws {
+        app = nil
     }
 
     // MARK: - Helpers

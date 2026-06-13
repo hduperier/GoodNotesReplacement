@@ -48,7 +48,7 @@ public protocol DocumentStore: AnyObject {
     func save() throws
 }
 
-public enum DocumentStoreError: Error, Sendable {
+public enum DocumentStoreError: Error, Equatable, Sendable {
     case notFound
     case invalidIndex
     case persistenceFailure(String)
