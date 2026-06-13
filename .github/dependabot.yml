@@ -1,0 +1,16 @@
+version: 2
+updates:
+  # Keep GitHub Actions pinned to commit SHAs current. Dependabot bumps the SHA
+  # and rewrites the `# vX.Y.Z` comment, so pinning stays maintainable instead
+  # of going stale and tempting a revert to mutable tags.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns:
+          - "*"
