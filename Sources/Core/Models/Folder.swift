@@ -20,6 +20,9 @@ public final class Folder {
     @Relationship(deleteRule: .cascade, inverse: \Notebook.folder)
     public var notebooks: [Notebook]
 
+    @Relationship(deleteRule: .cascade, inverse: \FlashcardSet.folder)
+    public var flashcardSets: [FlashcardSet]
+
     public init(
         id: UUID = UUID(),
         name: String,
@@ -35,5 +38,6 @@ public final class Folder {
         self.modifiedAt = createdAt
         self.subfolders = []
         self.notebooks = []
+        self.flashcardSets = []
     }
 }

@@ -192,6 +192,131 @@ public final class SwiftDataDocumentStore: DocumentStore {
         refreshThumbnail(for: page)
     }
 
+    // MARK: - Flashcard sets
+
+    @discardableResult
+    public func createFlashcardSet(title: String, in folder: Folder?) throws -> FlashcardSet {
+        let count = try folder?.flashcardSets.count ?? rootFlashcardSets().count
+        let set = FlashcardSet(title: title, folder: folder, sortIndex: count)
+        context.insert(set)
+        // Seed exactly one blank card at index 0.
+        let firstCard = Flashcard(index: 0, set: set)
+        context.insert(firstCard)
+        set.cards.append(firstCard)
+        if let folder {
+            folder.flashcardSets.append(set)
+            touch(folder)
+        }
+        try save()
+        return set
+    }
+
+    public func renameFlashcardSet(_ set: FlashcardSet, to title: String) throws {
+        set.title = title
+        touch(set)
+        try save()
+    }
+
+    public func deleteFlashcardSet(_ set: FlashcardSet) throws {
+        // `.cascade` on `FlashcardSet.cards` removes the cards.
+        context.delete(set)
+        try save()
+    }
+
+    public func moveFlashcardSet(_ set: FlashcardSet, into folder: Folder?) throws {
+        set.folder = folder
+        if let folder {
+            set.sortIndex = folder.flashcardSets.count
+        } else {
+            set.sortIndex = try rootFlashcardSets().count
+        }
+        touch(set)
+        try save()
+    }
+
+    @discardableResult
+    public func duplicateFlashcardSet(_ set: FlashcardSet) throws -> FlashcardSet {
+        let copy = FlashcardSet(
+            title: set.title + " copy",
+            folder: set.folder,
+            coverColorHex: set.coverColorHex,
+            sortIndex: set.sortIndex + 1
+        )
+        context.insert(copy)
+        // Deep-copy cards (text + both ink blobs) preserving order/index.
+        for card in set.orderedCards {
+            let c = Flashcard(
+                index: card.index,
+                frontText: card.frontText,
+                backText: card.backText,
+                set: copy
+            )
+            c.frontDrawingData = card.frontDrawingData
+            c.backDrawingData = card.backDrawingData
+            context.insert(c)
+            copy.cards.append(c)
+        }
+        if let folder = set.folder {
+            folder.flashcardSets.append(copy)
+            touch(folder)
+        }
+        try save()
+        return copy
+    }
+
+    // MARK: - Flashcards
+
+    @discardableResult
+    public func addCard(to set: FlashcardSet, after card: Flashcard?) throws -> Flashcard {
+        let insertIndex = (card?.index).map { $0 + 1 } ?? set.cards.count
+        // Shift following cards up to make room.
+        for c in set.cards where c.index >= insertIndex { c.index += 1 }
+        let newCard = Flashcard(index: insertIndex, set: set)
+        context.insert(newCard)
+        set.cards.append(newCard)
+        touch(set)
+        try save()
+        return newCard
+    }
+
+    public func updateCard(
+        _ card: Flashcard,
+        frontText: String,
+        backText: String,
+        frontDrawing: Data?,
+        backDrawing: Data?
+    ) throws {
+        card.frontText = frontText
+        card.backText = backText
+        card.frontDrawingData = frontDrawing
+        card.backDrawingData = backDrawing
+        card.modifiedAt = .now
+        if let set = card.set { touch(set) }
+        try save()
+    }
+
+    public func deleteCard(_ card: Flashcard) throws {
+        guard let set = card.set else { throw DocumentStoreError.notFound }
+        let removedIndex = card.index
+        set.cards.removeAll { $0.id == card.id }
+        context.delete(card)
+        // Close the gap so indices stay contiguous.
+        for c in set.cards where c.index > removedIndex { c.index -= 1 }
+        touch(set)
+        try save()
+    }
+
+    public func moveCard(_ card: Flashcard, to index: Int) throws {
+        guard let set = card.set else { throw DocumentStoreError.notFound }
+        var ordered = set.orderedCards
+        guard index >= 0, index < ordered.count else { throw DocumentStoreError.invalidIndex }
+        ordered.removeAll { $0.id == card.id }
+        ordered.insert(card, at: index)
+        for (i, c) in ordered.enumerated() { c.index = i }
+        touch(set)
+        try save()
+    }
+
     public func save() throws {
         do {
             try context.save()
@@ -204,6 +329,7 @@ public final class SwiftDataDocumentStore: DocumentStore {
 
     private func touch(_ folder: Folder) { folder.modifiedAt = .now }
     private func touch(_ notebook: Notebook) { notebook.modifiedAt = .now }
+    private func touch(_ set: FlashcardSet) { set.modifiedAt = .now }
 
     /// Root folders (no parent), ordered by `sortIndex`.
     private func rootFolders() throws -> [Folder] {
@@ -221,6 +347,19 @@ public final class SwiftDataDocumentStore: DocumentStore {
     /// Root notebooks (not in any folder), ordered by `sortIndex`.
     private func rootNotebooks() throws -> [Notebook] {
         let descriptor = FetchDescriptor<Notebook>(
+            predicate: #Predicate { $0.folder == nil },
+            sortBy: [SortDescriptor(\.sortIndex)]
+        )
+        do {
+            return try context.fetch(descriptor)
+        } catch {
+            throw DocumentStoreError.persistenceFailure(error.localizedDescription)
+        }
+    }
+
+    /// Root flashcard sets (not in any folder), ordered by `sortIndex`.
+    private func rootFlashcardSets() throws -> [FlashcardSet] {
+        let descriptor = FetchDescriptor<FlashcardSet>(
             predicate: #Predicate { $0.folder == nil },
             sortBy: [SortDescriptor(\.sortIndex)]
         )

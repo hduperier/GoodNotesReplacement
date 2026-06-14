@@ -8,6 +8,8 @@ public enum AppSchema {
         Folder.self,
         Notebook.self,
         Page.self,
+        FlashcardSet.self,
+        Flashcard.self,
     ]
 
     public static var schema: Schema { Schema(models) }
