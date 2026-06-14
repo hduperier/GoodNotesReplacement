@@ -10,7 +10,9 @@ final class AppSchemaTests: XCTestCase {
         XCTAssertTrue(names.contains("Folder"))
         XCTAssertTrue(names.contains("Notebook"))
         XCTAssertTrue(names.contains("Page"))
-        XCTAssertEqual(AppSchema.models.count, 3)
+        XCTAssertTrue(names.contains("FlashcardSet"))
+        XCTAssertTrue(names.contains("Flashcard"))
+        XCTAssertEqual(AppSchema.models.count, 5)
     }
 
     func test_schema_buildsFromModels() {
@@ -18,7 +20,8 @@ final class AppSchemaTests: XCTestCase {
         // A valid schema lists one entity per registered model.
         XCTAssertEqual(schema.entities.count, AppSchema.models.count)
         let entityNames = Set(schema.entities.map(\.name))
-        XCTAssertTrue(entityNames.isSuperset(of: ["Folder", "Notebook", "Page"]))
+        XCTAssertTrue(entityNames.isSuperset(
+            of: ["Folder", "Notebook", "Page", "FlashcardSet", "Flashcard"]))
     }
 
     func test_previewContainer_buildsAndIsUsable() throws {

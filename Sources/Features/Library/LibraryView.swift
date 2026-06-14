@@ -18,6 +18,8 @@ struct LibraryView: View {
     private var queriedRootFolders: [Folder]
     @Query(filter: #Predicate<Notebook> { $0.folder == nil }, sort: \Notebook.sortIndex)
     private var queriedRootNotebooks: [Notebook]
+    @Query(filter: #Predicate<FlashcardSet> { $0.folder == nil }, sort: \FlashcardSet.sortIndex)
+    private var queriedRootFlashcardSets: [FlashcardSet]
 
     /// Bumped after every mutation so the in-memory store's plain arrays (which
     /// aren't `@Query`-observed) are re-read. Harmless no-op cost for the real
@@ -26,6 +28,7 @@ struct LibraryView: View {
 
     @State private var showingNewNotebook = false
     @State private var showingNewFolder = false
+    @State private var showingNewFlashcardSet = false
     @State private var newFolderName = ""
 
     // Rename flow.
@@ -34,8 +37,10 @@ struct LibraryView: View {
 
     // Move flow.
     @State private var moveNotebookTarget: Notebook?
+    @State private var moveFlashcardSetTarget: FlashcardSet?
 
     @State private var openedNotebook: Notebook?
+    @State private var openedFlashcardSet: FlashcardSet?
 
     private let columns = [GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 24)]
 
@@ -57,9 +62,9 @@ struct LibraryView: View {
                     }
                 }
 
-                section(title: subfolders.isEmpty ? nil : "Notebooks") {
+                section(title: subfolders.isEmpty && flashcardSets.isEmpty ? nil : "Notebooks") {
                     if notebooks.isEmpty {
-                        emptyState
+                        if flashcardSets.isEmpty { emptyState }
                     } else {
                         LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
                             ForEach(notebooks) { notebook in
@@ -75,6 +80,23 @@ struct LibraryView: View {
                         }
                     }
                 }
+
+                if !flashcardSets.isEmpty {
+                    section(title: "Flashcard Sets") {
+                        LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
+                            ForEach(flashcardSets) { set in
+                                Button {
+                                    openedFlashcardSet = set
+                                } label: {
+                                    FlashcardSetTileView(set: set)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("library.flashcardSet.\(set.id.uuidString)")
+                                .contextMenu { flashcardSetMenu(set) }
+                            }
+                        }
+                    }
+                }
             }
             .padding(24)
         }
@@ -84,6 +106,9 @@ struct LibraryView: View {
         }
         .navigationDestination(item: $openedNotebook) { notebook in
             NotebookEditorView(notebook: notebook)
+        }
+        .navigationDestination(item: $openedFlashcardSet) { set in
+            FlashcardSetEditorView(set: set)
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
@@ -96,6 +121,13 @@ struct LibraryView: View {
                 .accessibilityIdentifier("library.newFolderButton")
 
                 Button {
+                    showingNewFlashcardSet = true
+                } label: {
+                    Label("New Flashcard Set", systemImage: "rectangle.stack.badge.plus")
+                }
+                .accessibilityIdentifier("library.newFlashcardSetButton")
+
+                Button {
                     showingNewNotebook = true
                 } label: {
                     Label("New Notebook", systemImage: "plus")
@@ -106,6 +138,11 @@ struct LibraryView: View {
         .sheet(isPresented: $showingNewNotebook) {
             NewNotebookView(folder: folder) { title, template, coverHex in
                 createNotebook(title: title, template: template, coverHex: coverHex)
+            }
+        }
+        .sheet(isPresented: $showingNewFlashcardSet) {
+            NewFlashcardSetView(folder: folder) { title, coverHex in
+                createFlashcardSet(title: title, coverHex: coverHex)
             }
         }
         .alert("New Folder", isPresented: $showingNewFolder) {
@@ -127,6 +164,11 @@ struct LibraryView: View {
                 bump()
             }
         }
+        .sheet(item: $moveFlashcardSetTarget) { set in
+            MoveFlashcardSetView(set: set, store: store) {
+                bump()
+            }
+        }
     }
 
     // MARK: - Reads
@@ -141,6 +183,11 @@ struct LibraryView: View {
         return list.sorted { $0.sortIndex < $1.sortIndex }
     }
 
+    private var flashcardSets: [FlashcardSet] {
+        let list = folder?.flashcardSets ?? rootFlashcardSets
+        return list.sorted { $0.sortIndex < $1.sortIndex }
+    }
+
     private var rootFolders: [Folder] {
         if let mem = store as? InMemoryDocumentStore { return mem.rootFolders }
         return queriedRootFolders
@@ -149,6 +196,11 @@ struct LibraryView: View {
     private var rootNotebooks: [Notebook] {
         if let mem = store as? InMemoryDocumentStore { return mem.rootNotebooks }
         return queriedRootNotebooks
+    }
+
+    private var rootFlashcardSets: [FlashcardSet] {
+        if let mem = store as? InMemoryDocumentStore { return mem.rootFlashcardSets }
+        return queriedRootFlashcardSets
     }
 
     // MARK: - Sections / empty state
@@ -196,6 +248,23 @@ struct LibraryView: View {
     }
 
     @ViewBuilder
+    private func flashcardSetMenu(_ set: FlashcardSet) -> some View {
+        Button { beginRename(.flashcardSet(set)) } label: {
+            Label("Rename", systemImage: "pencil")
+        }
+        Button { duplicate(set) } label: {
+            Label("Duplicate", systemImage: "plus.square.on.square")
+        }
+        Button { moveFlashcardSetTarget = set } label: {
+            Label("Move…", systemImage: "folder")
+        }
+        Divider()
+        Button(role: .destructive) { delete(set) } label: {
+            Label("Delete", systemImage: "trash")
+        }
+    }
+
+    @ViewBuilder
     private func folderMenu(_ sub: Folder) -> some View {
         Button { beginRename(.folder(sub)) } label: {
             Label("Rename", systemImage: "pencil")
@@ -226,14 +295,36 @@ struct LibraryView: View {
         bump()
     }
 
+    private func createFlashcardSet(title: String, coverHex: String) {
+        do {
+            let set = try store.createFlashcardSet(title: title, in: folder)
+            set.coverColorHex = coverHex
+            try store.save()
+            bump()
+            openedFlashcardSet = set
+        } catch { /* surfaced via UI in a fuller build */ }
+    }
+
     private func duplicate(_ notebook: Notebook) {
         try? store.duplicateNotebook(notebook)
         try? store.save()
         bump()
     }
 
+    private func duplicate(_ set: FlashcardSet) {
+        try? store.duplicateFlashcardSet(set)
+        try? store.save()
+        bump()
+    }
+
     private func delete(_ notebook: Notebook) {
         try? store.deleteNotebook(notebook)
+        try? store.save()
+        bump()
+    }
+
+    private func delete(_ set: FlashcardSet) {
+        try? store.deleteFlashcardSet(set)
         try? store.save()
         bump()
     }
@@ -256,6 +347,7 @@ struct LibraryView: View {
             switch target {
             case .notebook(let nb): try? store.renameNotebook(nb, to: name)
             case .folder(let f): try? store.renameFolder(f, to: name)
+            case .flashcardSet(let s): try? store.renameFlashcardSet(s, to: name)
             }
             try? store.save()
             bump()
@@ -270,17 +362,20 @@ struct LibraryView: View {
     private enum RenameTarget: Identifiable {
         case notebook(Notebook)
         case folder(Folder)
+        case flashcardSet(FlashcardSet)
 
         var id: UUID {
             switch self {
             case .notebook(let n): n.id
             case .folder(let f): f.id
+            case .flashcardSet(let s): s.id
             }
         }
         var currentName: String {
             switch self {
             case .notebook(let n): n.title
             case .folder(let f): f.name
+            case .flashcardSet(let s): s.title
             }
         }
     }

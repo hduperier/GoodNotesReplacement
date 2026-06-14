@@ -45,6 +45,31 @@ public protocol DocumentStore: AnyObject {
     /// `drawingData` is `PKDrawing.dataRepresentation()`.
     func updateDrawing(for page: Page, drawingData: Data) throws
 
+    // MARK: Flashcard sets
+    /// Creates a flashcard set seeded with one blank card.
+    @discardableResult
+    func createFlashcardSet(title: String, in folder: Folder?) throws -> FlashcardSet
+    func renameFlashcardSet(_ set: FlashcardSet, to title: String) throws
+    func deleteFlashcardSet(_ set: FlashcardSet) throws
+    func moveFlashcardSet(_ set: FlashcardSet, into folder: Folder?) throws
+    @discardableResult
+    func duplicateFlashcardSet(_ set: FlashcardSet) throws -> FlashcardSet
+
+    // MARK: Flashcards
+    /// Inserts a new card after `card` (or at the end when nil).
+    @discardableResult
+    func addCard(to set: FlashcardSet, after card: Flashcard?) throws -> Flashcard
+    /// Replaces a card's typed text and optional ink for both sides.
+    func updateCard(
+        _ card: Flashcard,
+        frontText: String,
+        backText: String,
+        frontDrawing: Data?,
+        backDrawing: Data?
+    ) throws
+    func deleteCard(_ card: Flashcard) throws
+    func moveCard(_ card: Flashcard, to index: Int) throws
+
     func save() throws
 }
 
