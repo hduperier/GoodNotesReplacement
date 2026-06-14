@@ -196,14 +196,16 @@ private struct CardFaceView: View {
                     }
                 }
                 .padding(28)
+                // Counter-rotate the content so the back face reads correctly
+                // (un-mirrored) rather than flipped left-to-right.
+                .rotation3DEffect(.degrees(showingBack ? 180 : 0), axis: (x: 0, y: 1, z: 0))
             }
             .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
             .frame(maxWidth: 520)
             .aspectRatio(1.5, contentMode: .fit)
             .padding(.horizontal, 24)
-            // Flip: rotate the whole face; counter-rotate the back so text reads
-            // correctly once flipped.
-            .rotation3DEffect(.degrees(showingBack ? 180 : 0), axis: (x: 0, y: 1, z: 0))
+            // Flip the whole face a single half-turn; the inner content is
+            // counter-rotated above so the back never reads mirrored.
             .rotation3DEffect(.degrees(showingBack ? 180 : 0), axis: (x: 0, y: 1, z: 0))
     }
 
