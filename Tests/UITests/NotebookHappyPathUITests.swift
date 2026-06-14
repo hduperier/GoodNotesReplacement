@@ -164,13 +164,16 @@ final class NotebookHappyPathUITests: XCTestCase {
         // Return to the library via the system navigation back button.
         let back = app.navigationBars.buttons.element(boundBy: 0)
         XCTAssertTrue(waitFor(back), "Missing navigation back button")
-        robustTap(back)
 
-        // The notebook cell must exist before we relaunch.
+        // The notebook cell must exist before we relaunch. Retry the back tap
+        // until the shelf reappears: the first synthesized tap can be swallowed
+        // while the window settles (frequent on cold CI simulators), which would
+        // otherwise leave us stuck in the editor and fail the shelf check.
         let cell = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH %@", A11y.notebookCellPrefix))
             .firstMatch
-        XCTAssertTrue(waitFor(cell), "Created notebook not visible on the shelf.")
+        tap(back, untilPresent: cell)
+        XCTAssertTrue(cell.exists, "Created notebook not visible on the shelf.")
 
         // --- Relaunch WITHOUT resetting: data must persist. ---
         app.terminate()
